@@ -67,7 +67,8 @@ class SingleStageDetector(BaseDetector):
 
     def forward_train(self,
                       img,
-                      img_metas,freeze=False,
+                      img_metas,
+                      freeze=False,
                       gt_bboxes =None,
                       gt_labels=None,
                       gt_bboxes_ignore=None):

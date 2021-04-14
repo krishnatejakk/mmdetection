@@ -147,7 +147,7 @@ class YOLOV3Head(BaseDenseHead, BBoxTestMixin):
         for m in self.convs_pred:
             normal_init(m, std=0.01)
 
-    def forward(self, feats):
+    def forward(self, feats, freeze):
         """Forward features from the upstream network.
 
         Args:
@@ -162,10 +162,17 @@ class YOLOV3Head(BaseDenseHead, BBoxTestMixin):
         assert len(feats) == self.num_levels
         pred_maps = []
         for i in range(self.num_levels):
-            x = feats[i]
-            x = self.convs_bridge[i](x)
-            pred_map = self.convs_pred[i](x)
-            pred_maps.append(pred_map)
+            if freeze and i!=(self.num_levels-1):
+                with torch.no_grad():
+                    x = feats[i]
+                    x = self.convs_bridge[i](x)
+                    pred_map = self.convs_pred[i](x)
+                    pred_maps.append(pred_map)
+            else:
+                x = feats[i]
+                x = self.convs_bridge[i](x)
+                pred_map = self.convs_pred[i](x)
+                pred_maps.append(pred_map)
 
         return tuple(pred_maps),
 
