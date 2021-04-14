@@ -4,25 +4,19 @@ import platform
 import shutil
 import time
 import warnings
-import torch
-import mmcv
-from mmcv.runner.base_runner import BaseRunner
-from mmcv.runner.builder import RUNNERS
-from mmcv.runner.checkpoint import save_checkpoint
-from mmcv.runner.utils import get_host_info
-from torch.utils.data import DataLoader, SubsetRandomSampler, Subset
-import numpy as np
-from mmdet.datasets import (build_dataloader,
-                            replace_ImageToTensor)
 
-from subset_selection.ssl import *
-import numpy as np
+import torch
+
+import mmcv
+from .base_runner import BaseRunner
+from .builder import RUNNERS
+from .checkpoint import save_checkpoint
+from .utils import get_host_info
 
 
 @RUNNERS.register_module()
-class CustomEpochBasedRunner(BaseRunner):
+class EpochBasedRunner(BaseRunner):
     """Epoch-based Runner.
-
     This runner train models epoch by epoch.
     """
 
@@ -59,9 +53,6 @@ class CustomEpochBasedRunner(BaseRunner):
         self.call_hook('after_train_epoch')
         self._epoch += 1
 
-    #def subset(self, data_loader, **kwargs):
-    #    grads_per_batch = self.model.module.compute_gradients(data_loader, self.model.device_ids)
-
     @torch.no_grad()
     def val(self, data_loader, **kwargs):
         self.model.eval()
@@ -77,9 +68,8 @@ class CustomEpochBasedRunner(BaseRunner):
 
         self.call_hook('after_val_epoch')
 
-    def run(self, data_loaders, val_dataloader, workflow, max_epochs=None, **kwargs):
+    def run(self, data_loaders, workflow, max_epochs=None, **kwargs):
         """Start running.
-
         Args:
             data_loaders (list[:obj:`DataLoader`]): Dataloaders for training
                 and validation.
@@ -91,66 +81,14 @@ class CustomEpochBasedRunner(BaseRunner):
         assert isinstance(data_loaders, list)
         assert mmcv.is_list_of(workflow, tuple)
         assert len(data_loaders) == len(workflow)
+        if max_epochs is not None:
+            warnings.warn(
+                'setting max_epochs in run is deprecated, '
+                'please set max_epochs in runner_config', DeprecationWarning)
+            self._max_epochs = max_epochs
 
-        cfg = kwargs['cfg']
-
-        if cfg.dss_strategy == 'GradMatchPB':
-            setf_model = OMPGradMatchStrategy(data_loaders, val_dataloader,self.model,\
-                 valid=False, lam=0.25, eps=1e-10)
-
-        elif cfg.dss_strategy == 'CRAIG':
-            # CRAIG Selection strategy
-            setf_model = CRAIGStrategy(data_loaders, val_dataloader,self.model)
-
-        elif cfg.dss_strategy == 'CRAIGPB':
-            # CRAIG Selection strategy
-            setf_model = CRAIGStrategy(data_loaders, val_dataloader,self.model)
-
-        elif cfg.dss_strategy == 'CRAIG-Warm':
-            # CRAIG Selection strategy
-            setf_model = CRAIGStrategy(data_loaders, val_dataloader,self.model)
-
-            kappa_iterations = int(cfg.kappa * max_iteration)
-            #full_epochs = round(kappa_epochs * self.configdata['dss_strategy']['fraction'])
-
-        elif cfg.dss_strategy == 'CRAIGPB-Warm':
-            # CRAIG Selection strategy
-            setf_model = CRAIGStrategy(data_loaders, val_dataloader,self.model)
-            kappa_iterations = int(cfg.kappa * max_iteration)
-            #full_epochs = round(kappa_epochs * self.configdata['dss_strategy']['fraction'])
-
-        elif cfg.dss_strategy == 'Random':
-            # Random Selection strategy
-            setf_model = RandomStrategy(data_loaders, online=False)
-
-        elif cfg.dss_strategy == 'Random-Online':
-            # Random-Online Selection strategy
-            setf_model = RandomStrategy(data_loaders, online=True)
-
-        elif cfg.dss_strategy == 'GradMatchPB-Warm':
-            # OMPGradMatch Selection strategy
-            setf_model = OMPGradMatchStrategy(data_loaders, val_dataloader,self.model)
-            kappa_iterations = int(cfg.kappa * max_iteration)
-
-        '''elif cfg.dss_strategy == 'Random-Warm':
-            kappa_iterations = int(cfg.kappa * max_iteration)
-
-        elif cfg.dss_strategy == 'Full':
-            kappa_iterations = int(0.01 * max_iteration)
-
-        elif cfg.dss_strategy == 'GLISTER':
-            # GLISTER Selection strategy
-            setf_model = GLISTERStrategy(data_loaders, val_dataloader,self.model, teacher_model1, ssl_alg, consistency_nored,
-                    cfg.lr, device, num_classes, False, 'Stochastic', r=int(bud))
-
-        elif cfg.dss_strategy == 'GLISTER-Warm':
-            # GLISTER Selection strategy
-            setf_model = GLISTERStrategy(data_loaders, val_dataloader,self.model, teacher_model1, ssl_alg, consistency_nored,
-                    cfg.lr, device, num_classes, False, 'Stochastic', r=int(bud))
-            kappa_iterations = int(cfg.kappa * max_iteration)
-            #full_epochs = round(kappa_epochs * self.configdata['dss_strategy']['fraction'])'''
-
-
+        assert self._max_epochs is not None, (
+            'max_epochs must be specified during instantiation')
 
         for i, flow in enumerate(workflow):
             mode, epochs = flow
@@ -165,30 +103,7 @@ class CustomEpochBasedRunner(BaseRunner):
                          self._max_epochs)
         self.call_hook('before_run')
 
-        N =  len(data_loaders[0].dataset)
-        bud = int(cfg.fraction * N)
-        #Initial Random Subset of the Dataset
-        start_idxs = numpy.random.choice(N, size=bud, replace=False)
-        dss_subset = Subset(data_loaders[0].dataset, start_idxs)
-        gammas = torch.ones(len(start_idxs), device="cuda")
-
-        data_ss_loaders = build_dataloader(dss_subset,
-            cfg.data.samples_per_gpu,
-            cfg.data.workers_per_gpu,
-            # cfg.gpus will be ignored if distributed
-            len(cfg.gpu_ids),
-            dist=kwargs['distributed'],
-            shuffle=False,
-            seed=cfg.seed) 
-
-        for i, flow in enumerate(workflow):
-            mode, epochs = flow
-            if mode == 'subset':
-                epochs = cfg.select_every
-        
-    
         while self.epoch < self._max_epochs:
-
             for i, flow in enumerate(workflow):
                 mode, epochs = flow
                 if isinstance(mode, str):  # self.train()
@@ -205,22 +120,7 @@ class CustomEpochBasedRunner(BaseRunner):
                 for _ in range(epochs):
                     if mode == 'train' and self.epoch >= self._max_epochs:
                         break
-                    if mode == 'train':
-                        epoch_runner(data_ss_loaders, **kwargs)
-                    elif mode == 'subset':
-                        subset_idxs,gammas = setf_model.select(bud)
-                        dss_subset = Subset(data_loaders[0].dataset, subset_idxs)
-
-                        data_ss_loaders = build_dataloader(dss_subset,
-                            cfg.data.samples_per_gpu,
-                            cfg.data.workers_per_gpu,
-                            # cfg.gpus will be ignored if distributed
-                            len(cfg.gpu_ids),
-                            dist=kwargs['distributed'],
-                            shuffle=False,
-                            seed=cfg.seed) 
-                        
-                
+                    epoch_runner(data_loaders[i], **kwargs)
 
         time.sleep(1)  # wait for some hooks like loggers to finish
         self.call_hook('after_run')
@@ -232,7 +132,6 @@ class CustomEpochBasedRunner(BaseRunner):
                         meta=None,
                         create_symlink=True):
         """Save the checkpoint.
-
         Args:
             out_dir (str): The directory that checkpoints are saved.
             filename_tmpl (str, optional): The checkpoint filename template,
@@ -271,7 +170,7 @@ class CustomEpochBasedRunner(BaseRunner):
 
 
 @RUNNERS.register_module()
-class CustomRunner(CustomEpochBasedRunner):
+class Runner(EpochBasedRunner):
     """Deprecated name of EpochBasedRunner."""
 
     def __init__(self, *args, **kwargs):

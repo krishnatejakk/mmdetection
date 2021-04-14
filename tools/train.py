@@ -68,6 +68,10 @@ def parse_args():
         default='none',
         help='job launcher')
     parser.add_argument('--local_rank', type=int, default=0)
+    parser.add_argument('--dss_strategy', default="Full")
+    parser.add_argument('--fraction', type=float, default=1)
+    parser.add_argument('--select_every', type=int, default=2)
+    parser.add_argument('--kappa', type=float, default=0.1)
     args = parser.parse_args()
     if 'LOCAL_RANK' not in os.environ:
         os.environ['LOCAL_RANK'] = str(args.local_rank)
