@@ -23,8 +23,7 @@ class RepPointsDetector(SingleStageDetector):
               self).__init__(backbone, neck, bbox_head, train_cfg, test_cfg,
                              pretrained)
 
-
-    def compute_gradients (self, data_loader, device_ids,grouping=1):
+    def compute_gradients (self, data_loader, device_ids, grouping=1):
 
         for i, data_batch in enumerate(data_loader):
             inputs, kwargs = scatter_kwargs(data_batch, {}, device_ids, dim=0)
