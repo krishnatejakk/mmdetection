@@ -129,7 +129,8 @@ class CustomEpochBasedRunner(BaseRunner):
 
         elif cfg.dss_strategy == 'GradMatchPB-Warm':
             # OMPGradMatch Selection strategy
-            setf_model = OMPGradMatchStrategy(data_loaders, val_dataloader,self.model)
+            setf_model = OMPGradMatchStrategy(data_loaders, val_dataloader,self.model,\
+                valid=False, lam=0.25, eps=1e-10)
             kappa_iterations = int(cfg.kappa * max_iteration)
 
         '''elif cfg.dss_strategy == 'Random-Warm':
